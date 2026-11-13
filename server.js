@@ -7,8 +7,8 @@ import { timingSafeEqual } from 'node:crypto';
 import { openDb } from './src/db.js';
 import { createRunner } from './src/runner.js';
 import { send, channels } from './src/notify.js';
-import { searchUrl } from './src/sources/kleinanzeigen.js';
-import { suggestProfile, AiError } from './src/ai.js';
+import { searchUrl, fetchAd, BlockedError } from './src/sources/kleinanzeigen.js';
+import { suggestProfile, assessListing, AiError } from './src/ai.js';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const PORT = Number(process.env.PORT) || 8787;
@@ -128,6 +128,44 @@ async function api(req, res, path) {
       return json(res, 200, p);
     }
     if (m === 'DELETE') { db.deleteProfile(mm[1]); return json(res, 200, { ok: true }); }
+  }
+  mm = path.match(/^\/api\/listings\/([^/]+)\/assess$/);
+  if (mm && m === 'POST') {
+    const id = decodeURIComponent(mm[1]);
+    let l = db.listing(id);
+    if (!l) return json(res, 404, { error: 'Angebot nicht gefunden' });
+    const apiKey = aiKey(db.settings());
+    if (!apiKey) return json(res, 400, { error: 'Kein Claude-API-Schlüssel hinterlegt (Einstellungen → KI-Assistent).' });
+    // Für eine fundierte Bewertung einmal die vollständige Anzeige laden (ein Abruf, nur auf Knopfdruck).
+    let ad = null;
+    let adNote = '';
+    if (l.source === 'ka') {
+      if (db.get('ka.blockedUntil', 0) > Date.now()) adNote = 'Kleinanzeigen pausiert – Bewertung nur anhand des Kurztexts.';
+      else {
+        try {
+          ad = await fetchAd(l);
+          const now = Date.now();
+          const patch = { last_checked: now, status: ad.status };
+          if (ad.status === 'gone') Object.assign(patch, { gone_at: now, gone_reason: 'Anzeige gelöscht oder verkauft (geprüft)' });
+          else if (ad.price != null && ad.price !== l.price) Object.assign(patch, { price: ad.price, unit_price: l.extra.unit === 'tb' && l.attrs.tb ? Math.round((ad.price / l.attrs.tb) * 100) / 100 : ad.price, history: [...l.history, { t: now, p: ad.price }].slice(-30) });
+          db.updateListing(id, patch);
+          if (patch.price != null) runner.rescoreAll();
+          l = db.listing(id);
+          if (ad.status === 'gone') return json(res, 200, { listing: l, gone: true });
+        } catch (e) {
+          if (e instanceof BlockedError) db.set('ka.blockedUntil', Date.now() + db.settings().blockBackoffH * 3600000);
+          adNote = 'Anzeigenseite nicht abrufbar – Bewertung nur anhand des Kurztexts.';
+        }
+      }
+    }
+    try {
+      const result = await assessListing({ listing: l, profile: db.profile(l.profile_id), ad }, { apiKey });
+      db.updateListing(id, { extra: { ...db.listing(id).extra, ai: { t: Date.now(), price: l.price, full: !!ad?.description, note: adNote, result } } });
+      return json(res, 200, { listing: db.listing(id) });
+    } catch (e) {
+      if (e instanceof AiError) return json(res, 502, { error: e.message });
+      throw e;
+    }
   }
   mm = path.match(/^\/api\/listings\/([^/]+)$/);
   if (mm && m === 'PATCH') {

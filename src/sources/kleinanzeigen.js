@@ -109,3 +109,23 @@ export function interpretAd(adId, { status, url, html }) {
   if (/^Reserviert\b/i.test(visible)) return { status: 'reserved', price };
   return { status: 'active', price };
 }
+
+/** Beschreibung, Detailangaben und Verkäufer-Merkmale einer Anzeigenseite (ohne Namen). */
+export function parseAd(html) {
+  const description = stripTags((html.match(/<p[^>]*id="viewad-description-text"[^>]*>([\s\S]*?)<\/p>/)?.[1] || '').replace(/<br\s*\/?>/gi, '\n'));
+  const details = {};
+  for (const m of html.matchAll(/<li class="addetailslist--detail">([\s\S]*?)<span class="addetailslist--detail--value"[^>]*>([\s\S]*?)<\/span>/g)) {
+    const k = stripTags(m[1]);
+    if (k) details[k] = stripTags(m[2]);
+  }
+  const sellerSince = html.match(/Aktiv seit (\d{1,2}\.\d{1,2}\.\d{4})/)?.[1] || null;
+  const sellerBadges = [...html.matchAll(/<span class="userbadge[^"]*">([\s\S]*?)<\/span>/g)].map((m) => stripTags(m[1])).filter(Boolean).slice(0, 5);
+  const shipping = stripTags(html.match(/<span class="boxedarticle--details--shipping">([\s\S]*?)<\/span>/)?.[1] || '');
+  return { description, details, sellerSince, sellerBadges, shipping };
+}
+
+/** Lädt die Anzeigenseite einmal und liefert Status + Inhalte. */
+export async function fetchAd(listing, fetchFn = fetch) {
+  const r = await get(listing.url, fetchFn);
+  return { ...interpretAd(listing.id.replace(/^ka:/, ''), r), ...parseAd(r.html) };
+}

@@ -38,6 +38,10 @@ Unter *Suchen → + Neue Suche* gibt es drei Wege:
 
 Für die KI unter *Einstellungen → KI-Assistent* einen Claude-API-Schlüssel eintragen (oder `ANTHROPIC_API_KEY` setzen). Modell: `claude-opus-5-5`, änderbar über `DEALRADAR_AI_MODEL`. Jeder Vorschlag verbraucht API-Guthaben; die Suchläufe selbst nutzen keine KI. Lehnt das Modell eine Anfrage ab, übernimmt ein serverseitiges Ausweichmodell.
 
+## KI-Bewertung eines Angebots
+
+In der Detailansicht jedes Angebots gibt es (mit hinterlegtem API-Schlüssel) den Knopf **KI fragen**. Der Radar lädt dafür einmal die vollständige Anzeige nach (Beschreibung, Detailangaben, Alter des Verkäuferkontos – kein Name) und lässt Claude das Angebot fachlich einordnen: Produkt und Technik, Passung zur Suche, Preis, Stärken, Risiken, Fragen an den Verkäufer, Verhandlungsspielraum und was sich nicht beurteilen lässt. Das Ergebnis bleibt am Angebot gespeichert. Ist die Anzeige inzwischen gelöscht, wird sie als „weg" markiert und nichts an die KI geschickt.
+
 ## Benachrichtigungen
 
 Unter *Einstellungen* eintragen und mit „Testnachricht senden“ prüfen:

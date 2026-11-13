@@ -144,3 +144,10 @@ label.f small { display: block; margin-top: 3px; font-size: 11.5px; }
 .card.hero { display: flex; flex-direction: column; gap: 0; }
 .hero .img { width: 100%; flex: none; }
 .hero .b { background: var(--panel); position: relative; width: 100%; }
+
+.panel.ai { margin-top: 12px; border-color: color-mix(in srgb, var(--blue) 45%, transparent); scroll-margin-top: 60px; }
+.panel.ai h4 { margin: 12px 0 3px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.panel.ai p, .panel.ai li { font-size: 14px; }
+.panel.ai ul { margin: 0; padding-left: 18px; } .panel.ai li { margin-bottom: 3px; }
+.verdict { display: inline-block; font-weight: 700; border-radius: 9px; padding: 4px 10px; margin-bottom: 8px; background: var(--panel2); }
+.verdict.g { color: var(--accent); } .verdict.t { color: var(--top); } .verdict.w { color: var(--warn); }

@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { suggestProfile, AiError, PROFILE_SCHEMA } from '../src/ai.js';
+import { readFileSync } from 'node:fs';
+import { suggestProfile, assessListing, AiError, PROFILE_SCHEMA, ASSESS_SCHEMA } from '../src/ai.js';
+import { parseAd } from '../src/sources/kleinanzeigen.js';
 
 class BadRequestError extends Error {}
 const Anthropic = { BadRequestError };
@@ -41,6 +43,7 @@ test('Schema: alle Objekte geschlossen und vollständig required', () => {
     if (n?.items) walk(n.items);
   };
   walk(PROFILE_SCHEMA);
+  walk(ASSESS_SCHEMA);
 });
 
 test('SDK ist installiert und bietet die genutzten Aufrufe', async () => {
@@ -49,4 +52,27 @@ test('SDK ist installiert und bietet die genutzten Aufrufe', async () => {
   assert.equal(typeof c.messages.create, 'function');
   assert.equal(typeof c.beta.messages.create, 'function');
   for (const k of ['BadRequestError', 'AuthenticationError', 'RateLimitError', 'APIConnectionError', 'APIError']) assert.equal(typeof SDK[k], 'function', k);
+});
+
+test('Anzeigenseite: Beschreibung, Details, Verkäufer-Merkmale', () => {
+  const ad = parseAd(readFileSync(new URL('./fixtures/ka-ad.html', import.meta.url), 'utf8'));
+  assert.match(ad.description, /^ZOTAC Geforce RTX 5090, steht zum Verkauf/);
+  assert.match(ad.description, /Garantie enthalten\.$/);
+  assert.deepEqual(ad.details, { Art: 'Grafikkarten', Zustand: 'Sehr Gut' });
+  assert.equal(ad.sellerSince, '25.10.2026');
+  assert.ok(ad.sellerBadges.length >= 1);
+  assert.match(ad.shipping, /Versand ab 7,69/);
+});
+
+test('Angebotsbewertung: Anfrage enthält Anzeige, App-Bewertung und Suchprofil', async () => {
+  const verdict = { verdict: 'pruefen', headline: 'h', product: 'p', fit: 'f', price: 'pr', strengths: [], risks: ['r'], questions: ['q'], negotiation: '', limits: 'l' };
+  let req;
+  const client = { beta: { messages: { create: async (r) => { req = r; return { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(verdict) }] }; } } } };
+  const listing = { source: 'ka', title: 'ZOTAC RTX 5090', price: 3250, vb: false, location: '90431 Nürnberg', shipping: true, descr: 'kurz…', score: 96, tier: 'RTX 5090 (32 GB)', target: 4950, top: 4400, median: 5500, unit_price: 3250, attrs: {}, badges: [], warnings: [], history: [{ t: 1, p: 3250 }], extra: { obs: 19 }, status: 'active' };
+  const out = await assessListing({ listing, profile: { name: 'Grafikkarten', queries: ['rtx 5090'], tiers: [{ label: 'RTX 5090 (32 GB)' }] }, ad: { description: 'Volltext der Anzeige', details: { Zustand: 'Sehr Gut' }, sellerSince: '25.10.2026', sellerBadges: [], shipping: '+ Versand ab 7,69 €', status: 'active' } }, { apiKey: 'k', clientFactory: async () => ({ Anthropic, client }) });
+  assert.deepEqual(out, verdict);
+  const u = req.messages[0].content;
+  for (const needle of ['Volltext der Anzeige', '3250 €', '5500 €', 'aus 19 Anzeigen', 'Sehr Gut', '25.10.2026', 'Grafikkarten', 'Privatanzeige']) assert.ok(u.includes(needle), needle);
+  assert.ok(!u.includes('kurz…'));
+  assert.equal(req.output_config.effort, 'high');
 });

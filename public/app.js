@@ -194,6 +194,24 @@ function spark(hist) {
     <div class="small muted">${hist.map((x) => `${new Date(x.t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}: ${eur(x.p)}`).join(' → ')}</div>`;
 }
 
+const VERDICT = { zugreifen: ['🟢', 'Zugreifen', 'g'], pruefen: ['🟡', 'Interessant – erst prüfen', 't'], abwarten: ['⚪', 'Kein besonderer Deal', ''], finger_weg: ['🔴', 'Finger weg', 'w'] };
+
+function aiPanel(l) {
+  const a = l.extra.ai;
+  if (!a) return '';
+  const r = a.result;
+  const [icon, label, cls] = VERDICT[r.verdict] || ['', r.verdict, ''];
+  const sec = (title, text) => (text ? `<h4>${title}</h4><p>${h(text)}</p>` : '');
+  const lst = (title, items) => (items?.length ? `<h4>${title}</h4><ul>${items.map((x) => `<li>${h(x)}</li>`).join('')}</ul>` : '');
+  const stale = a.price !== l.price ? ` · Preis war damals ${eur(a.price)}` : '';
+  return `<div class="panel ai"><h3>✨ KI-Bewertung</h3>
+    <div class="verdict ${cls}">${icon} ${h(label)}</div><p><b>${h(r.headline)}</b></p>
+    ${sec('Produkt & Technik', r.product)}${sec('Passt es zur Suche?', r.fit)}${sec('Preis', r.price)}
+    ${lst('Dafür spricht', r.strengths)}${lst('Risiken', r.risks)}${lst('Fragen & Prüfpunkte', r.questions)}
+    ${sec('Verhandlung', r.negotiation)}${sec('Nicht beurteilbar', r.limits)}
+    <p class="muted small" style="margin-top:10px">${ago(a.t)}${stale} · ${a.full ? 'auf Basis der vollständigen Anzeige' : h(a.note || 'nur anhand des Kurztexts')}. KI-Einschätzung – Angaben und Preise können falsch oder veraltet sein.</p></div>`;
+}
+
 function detail(l) {
   const p = prof(l.profile_id);
   const u = l.extra.unit === 'tb' ? '/TB' : '';
@@ -208,9 +226,11 @@ function detail(l) {
   <div class="tags" style="margin-bottom:12px">${tags(l)}</div>
   <div class="actions">
     <a class="btn pri wide" href="${h(l.url)}" target="_blank" rel="noopener noreferrer">Angebot öffnen ↗</a>
+    ${S.ai ? `<button class="btn wide" data-act="ask-ai" data-id="${h(l.id)}">✨ ${l.extra.ai ? 'KI erneut fragen' : 'KI fragen'}</button>` : ''}
     <button class="btn" data-act="fav" data-id="${h(l.id)}">${l.fav ? '⭐ Gemerkt' : '☆ Merken'}</button>
     <button class="btn" data-act="hide" data-id="${h(l.id)}">${l.hidden ? '👁 Einblenden' : '🙈 Ausblenden'}</button>
   </div>
+  ${aiPanel(l)}
   <div class="panel" style="margin-top:12px"><h3>Warum ${isDeal(l) ? 'ist das ein Deal' : 'dieser Score'}?</h3>
     <dl class="kv">
       <dt>Score</dt><dd><b>${l.level === 'unknown' ? '–' : l.score}</b> / 100 ${l.level === 'top' ? '🔥 Top-Deal' : l.level === 'deal' ? '✅ Deal' : ''}</dd>
@@ -407,6 +427,21 @@ const actions = {
   'close-sheet'() { closeSheet(); render(); },
   async fav(id) { const l = S.listings.find((x) => x.id === id); Object.assign(l, await api('PATCH', `/api/listings/${encodeURIComponent(id)}`, { fav: !l.fav })); openSheet(detail(l), 'detail'); },
   async hide(id) { const l = S.listings.find((x) => x.id === id); await api('PATCH', `/api/listings/${encodeURIComponent(id)}`, { hidden: !l.hidden }); closeSheet(); toast(l.hidden ? 'Wieder eingeblendet' : 'Ausgeblendet – im Archiv zu finden'); await load(true); },
+  async 'ask-ai'(id, el) {
+    el.disabled = true;
+    el.textContent = '✨ KI bewertet … (bis ca. 1 min)';
+    try {
+      const r = await api('POST', `/api/listings/${encodeURIComponent(id)}/assess`);
+      const i = S.listings.findIndex((x) => x.id === id);
+      if (i >= 0) S.listings[i] = r.listing;
+      if (r.gone) toast('Die Anzeige ist nicht mehr online.');
+      if (ui.sheet === 'detail') { openSheet(detail(r.listing), 'detail'); if (!r.gone) $('.panel.ai')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    } catch (e) {
+      el.disabled = false;
+      el.textContent = '✨ KI fragen';
+      throw e;
+    }
+  },
   edit(id) { editing = structuredClone(prof(id)); openSheet(editor(editing), 'edit'); },
   new(id) { editing = id === 'rss' ? { type: 'rss', name: '', emoji: '🔥', feeds: [], minTemp: 200, alertTemp: 500, maxAgeDays: 4 } : { type: 'ka', name: '', emoji: '🔎', queries: [], minPrice: 50, tiers: [{ label: 'Alle' }], badges: [], warnings: [], require: [] }; openSheet(editor(editing), 'edit'); },
   'new-simple'() { editing = null; openSheet(simpleForm(), 'simple'); },
