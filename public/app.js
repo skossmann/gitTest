@@ -235,7 +235,7 @@ function viewSearches() {
   return `<header class="head"><div class="grow"><h1>Suchen</h1><div class="sub">Was der Radar beobachtet – alles antippbar und änderbar</div></div></header>
   ${S.profiles.map((p) => `<div class="prow"><button class="row grow" data-act="edit" data-id="${h(p.id)}" style="text-align:left"><span class="em">${h(p.emoji)}</span><span class="grow"><span class="nm">${h(p.name)}</span><br><span class="muted small">${p.type === 'rss' ? `${p.feeds.length} Feed · ab ${p.minTemp}°` : `${p.queries.length} Suche${p.queries.length === 1 ? '' : 'n'} · ${p.tiers.length} Preisstufe${p.tiers.length === 1 ? '' : 'n'}`}</span></span></button>
     <button class="switch ${p.enabled ? 'on' : ''}" data-act="toggle" data-id="${h(p.id)}" role="switch" aria-checked="${p.enabled}" aria-label="${h(p.name)} aktiv"></button></div>`).join('')}
-  <div class="row" style="margin-top:14px"><button class="btn grow" data-act="new" data-id="ka">+ Kleinanzeigen-Suche</button><button class="btn grow" data-act="new" data-id="rss">+ Deal-Feed</button></div>
+  <div class="row" style="margin-top:14px"><button class="btn pri grow" data-act="new-simple">+ Neue Suche</button><button class="btn" data-act="new" data-id="rss">+ Deal-Feed</button></div>
   <p class="muted small" style="margin-top:14px">Pro Lauf werden höchstens ${S.settings.kaBudget - S.settings.checkBudget} Suchen abgerufen (reihum). Bei ${S.profiles.filter((p) => p.enabled && p.type !== 'rss').reduce((n, p) => n + p.queries.length, 0)} aktiven Suchen ist jede etwa alle ${Math.ceil(S.profiles.filter((p) => p.enabled && p.type !== 'rss').reduce((n, p) => n + p.queries.length, 0) / Math.max(1, S.settings.kaBudget - S.settings.checkBudget)) * S.settings.intervalMin / 60} h dran.</p>`;
 }
 
@@ -248,10 +248,64 @@ const tierRow = (t = {}) => `<div class="sub-item" data-row="tiers"><button clas
 const badgeRow = (b = {}) => `<div class="sub-item" data-row="badges"><button class="del" data-act="del-row" aria-label="Löschen">✕</button>${F('Stichwörter', 'any', b.any)}<div class="grid3">${F('Emoji', 'emoji', b.emoji ?? '✨')}${F('Bonus-Punkte', 'bonus', b.bonus ?? 0, { type: 'number' })}<span></span></div>${F('Hinweistext', 'text', b.text)}</div>`;
 const warnRow = (w = {}) => `<div class="sub-item" data-row="warnings"><button class="del" data-act="del-row" aria-label="Löschen">✕</button>${F('Stichwörter', 'any', w.any)}${F('Warntext', 'text', w.text)}${F('Punktabzug', 'penalty', w.penalty ?? 20, { type: 'number' })}</div>`;
 
+// Einfache Suche: ein Feld genügt. Von hier geht es optional ins erweiterte Formular oder zur KI.
+function simpleForm(v = {}) {
+  return `<div class="sheet-top"><h2>Neue Suche</h2><button class="x" data-act="close-sheet" aria-label="Schließen">✕</button></div>
+  <div class="panel">
+    <label class="f"><span>Was suchst du?</span><textarea id="s-term" rows="2" style="min-height:64px;font-family:inherit;font-size:16px" placeholder="z. B. Sonos Arc">${h(v.term || '')}</textarea>
+      <small>Ein Suchbegriff genügt. Für die KI darfst du auch ausführlich beschreiben, worauf es dir ankommt.</small></label>
+    <div class="grid2"><label class="f"><span>Wunschpreis € (optional)</span><input type="number" inputmode="decimal" id="s-wish" value="${h(v.wish || '')}" placeholder="lernt Marktpreis"></label>
+      <label class="f"><span>Nicht im Titel (optional)</span><input type="text" id="s-ex" value="${h(v.ex || '')}" placeholder="defekt, hülle" autocapitalize="off"></label></div>
+    <p class="muted small">Ohne Wunschpreis beobachtet der Radar erst den Markt und meldet dann Angebote deutlich unter dem üblichen Preis.</p>
+  </div>
+  <div class="actions">
+    <button class="btn pri wide" data-act="save-simple">Suche anlegen</button>
+    <button class="btn" data-act="ai-new">✨ Mit KI ausfüllen</button>
+    <button class="btn" data-act="to-advanced">Erweitert …</button>
+  </div>
+  <p class="muted small">${S.ai ? '„Mit KI ausfüllen“ erstellt aus deiner Beschreibung einen Vorschlag mit Suchbegriffen, Ausschlüssen, Preisstufen und Warnungen. Du prüfst ihn im erweiterten Formular, bevor etwas gespeichert wird.' : 'Für „Mit KI ausfüllen“ zuerst unter Einstellungen → KI-Assistent einen Claude-API-Schlüssel eintragen.'}</p>`;
+}
+
+function readSimple() {
+  const term = $('#s-term').value.replace(/\s+/g, ' ').trim();
+  const wish = Number($('#s-wish').value) || null;
+  const ex = $('#s-ex').value.split(/[,;|]/).map((x) => x.trim()).filter(Boolean);
+  return { term, wish, ex };
+}
+
+function simpleProfile({ term, wish, ex }) {
+  if (!term) throw new Error('Bitte einen Suchbegriff eingeben.');
+  if (term.length > 60) throw new Error('Für die einfache Suche bitte einen kurzen Suchbegriff – längere Beschreibungen kann die KI umsetzen.');
+  return {
+    type: 'ka', name: term, emoji: '🔎', enabled: true, queries: [term], require: [term], exclude: ex.join('|'), excludeText: '',
+    minPrice: wish ? Math.max(10, Math.round(wish * 0.15)) : 20, maxPrice: wish ? wish * 2 : '',
+    tiers: [{ label: term, target: wish || '' }], badges: [], warnings: [],
+  };
+}
+
+async function askAi(btn, payload, keep = {}) {
+  if (!S.ai) throw new Error('Erst unter Einstellungen → KI-Assistent einen Claude-API-Schlüssel eintragen.');
+  const label = btn.textContent;
+  const sheet = ui.sheet;
+  btn.disabled = true;
+  btn.textContent = '✨ KI arbeitet … (bis ca. 1 min)';
+  try {
+    const { profile } = await api('POST', '/api/ai/suggest', payload);
+    if (ui.sheet !== sheet) return; // Formular wurde inzwischen geschlossen
+    editing = { ...profile, ...keep, type: 'ka', aiFilled: true };
+    openSheet(editor(editing), 'edit');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 function editor(p) {
   const isNew = !p.id;
   const head = `<div class="sheet-top"><h2>${isNew ? 'Neue Suche' : h(p.name)}</h2><button class="x" data-act="close-sheet" aria-label="Schließen">✕</button></div>
+    ${p.aiFilled ? '<div class="banner info">✨ <b>KI-Vorschlag – noch nicht gespeichert.</b> Bitte prüfen, vor allem Preise und Ausschlüsse.</div>' : ''}
     ${p.note ? `<div class="banner info">${h(p.note)}</div>` : ''}
+    ${p.type !== 'rss' && S.ai ? `<div class="panel"><label class="f" style="margin-bottom:8px"><span>✨ KI-Assistent</span><input type="text" id="ai-hint" placeholder="${isNew ? 'Was soll anders sein?' : 'z. B. „auch Vorgängermodell aufnehmen“'}" autocomplete="off"></label><button class="btn block" data-act="ai-edit">Formular von der KI überarbeiten lassen</button></div>` : ''}
     <div class="panel"><div class="grid2" style="grid-template-columns:76px 1fr">${F('Emoji', 'emoji', p.emoji)}${F('Name', 'name', p.name)}</div>`;
   const foot = `<div class="actions"><button class="btn pri wide" data-act="save-profile">Speichern</button>${isNew ? '' : '<button class="btn danger wide" data-act="delete-profile">Suche löschen</button>'}</div>`;
   const syntax = 'Mehrere Alternativen mit | trennen. Begriffe mit Leerzeichen müssen alle vorkommen. *wort ignoriert Wortgrenzen.';
@@ -290,6 +344,8 @@ function viewSettings() {
     ${F('Webhook-URL (optional)', 'webhookUrl', s.webhookUrl, { type: 'url' })}
     <div class="grid3">${F('Alarm ab Score', 'alertScore', s.alertScore, { type: 'number' })}${F('Max. pro Lauf', 'maxAlerts', s.maxAlerts, { type: 'number' })}${F('Preisverfall %', 'priceDropPct', s.priceDropPct, { type: 'number' })}</div>
     <button type="button" class="btn block" data-act="test-notify">Testnachricht senden</button></div>
+  <div class="panel"><h3>✨ KI-Assistent</h3>
+    ${F('Claude-API-Schlüssel', 'anthropicKey', s.anthropicKey, { ph: 'sk-ant-…', help: `Für „Mit KI ausfüllen“ beim Anlegen von Suchen. ${S.ai ? 'Schlüssel ist hinterlegt.' : 'Noch kein Schlüssel hinterlegt.'} Jeder Vorschlag verbraucht API-Guthaben; die Suchläufe selbst nutzen keine KI.` })}</div>
   <div class="panel"><h3>⏱ Zeitplan & Schonung</h3>
     <div class="grid2">${F('Lauf alle … Minuten', 'intervalMin', s.intervalMin, { type: 'number' })}${F('Kleinanzeigen-Abrufe / Lauf', 'kaBudget', s.kaBudget, { type: 'number' })}
     ${F('davon Verfügbarkeitsprüfungen', 'checkBudget', s.checkBudget, { type: 'number' })}${F('Pause nach Sperre (h)', 'blockBackoffH', s.blockBackoffH, { type: 'number' })}
@@ -353,6 +409,15 @@ const actions = {
   async hide(id) { const l = S.listings.find((x) => x.id === id); await api('PATCH', `/api/listings/${encodeURIComponent(id)}`, { hidden: !l.hidden }); closeSheet(); toast(l.hidden ? 'Wieder eingeblendet' : 'Ausgeblendet – im Archiv zu finden'); await load(true); },
   edit(id) { editing = structuredClone(prof(id)); openSheet(editor(editing), 'edit'); },
   new(id) { editing = id === 'rss' ? { type: 'rss', name: '', emoji: '🔥', feeds: [], minTemp: 200, alertTemp: 500, maxAgeDays: 4 } : { type: 'ka', name: '', emoji: '🔎', queries: [], minPrice: 50, tiers: [{ label: 'Alle' }], badges: [], warnings: [], require: [] }; openSheet(editor(editing), 'edit'); },
+  'new-simple'() { editing = null; openSheet(simpleForm(), 'simple'); },
+  async 'save-simple'() { await api('POST', '/api/profiles', simpleProfile(readSimple())); closeSheet(); toast('Suche angelegt – läuft beim nächsten Durchgang mit'); await load(true); },
+  'to-advanced'() { const v = readSimple(); editing = v.term ? simpleProfile(v) : { type: 'ka', name: '', emoji: '🔎', queries: [], minPrice: 50, tiers: [{ label: 'Alle' }], badges: [], warnings: [], require: [] }; openSheet(editor(editing), 'edit'); },
+  async 'ai-new'(_, el) { const v = readSimple(); if (!v.term) throw new Error('Bitte beschreiben, was du suchst.'); await askAi(el, { description: v.term + (v.ex.length ? `\nNicht gewünscht: ${v.ex.join(', ')}` : ''), wishPrice: v.wish }); },
+  async 'ai-edit'(_, el) {
+    const hint = $('#ai-hint').value.trim();
+    const current = collect($('#sheet-body'));
+    await askAi(el, { description: hint || `Überarbeite und vervollständige dieses Suchprofil: ${current.name}`, current }, { id: editing.id, enabled: editing.enabled });
+  },
   async toggle(id) { const p = prof(id); await api('PUT', `/api/profiles/${id}`, { ...p, enabled: !p.enabled }); await load(true); },
   'add-row'(id) { $(`#rows-${id}`).insertAdjacentHTML('beforeend', { tiers: tierRow, badges: badgeRow, warnings: warnRow }[id]()); },
   'del-row'(_, el) { el.closest('[data-row]').remove(); },

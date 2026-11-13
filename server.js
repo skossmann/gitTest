@@ -8,6 +8,7 @@ import { openDb } from './src/db.js';
 import { createRunner } from './src/runner.js';
 import { send, channels } from './src/notify.js';
 import { searchUrl } from './src/sources/kleinanzeigen.js';
+import { suggestProfile, AiError } from './src/ai.js';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const PORT = Number(process.env.PORT) || 8787;
@@ -63,12 +64,15 @@ function cleanProfile(input, existing) {
   };
 }
 
+const mask = (v) => (v ? '••••' + v.slice(-4) : '');
+const aiKey = (s) => s.anthropicKey || process.env.ANTHROPIC_API_KEY || '';
+
 function snapshot() {
   const s = db.settings();
   const listings = db.listings('1=1').filter((l) => l.status !== 'gone' || l.level === 'top' || l.level === 'deal' || l.fav);
   return {
     now: Date.now(), running: runner.state.running, progress: runner.state.progress, nextRun: db.get('nextRun', null), kaBlockedUntil: db.get('ka.blockedUntil', 0),
-    settings: { ...s, telegramToken: s.telegramToken ? '••••' + s.telegramToken.slice(-4) : '' }, channels: channels(s), auth: !!PASSWORD,
+    settings: { ...s, telegramToken: mask(s.telegramToken), anthropicKey: mask(s.anthropicKey) }, channels: channels(s), auth: !!PASSWORD, ai: !!aiKey(s),
     profiles: db.profiles(), runs: db.runs(15), listings,
   };
 }
@@ -84,7 +88,7 @@ async function api(req, res, path) {
   if (path === '/api/unblock' && m === 'POST') { db.set('ka.blockedUntil', 0); return json(res, 200, { ok: true }); }
   if (path === '/api/settings' && m === 'PUT') {
     const b = await body(req);
-    if (/^••••/.test(b.telegramToken || '')) delete b.telegramToken;
+    for (const k of ['telegramToken', 'anthropicKey']) if (/^••••/.test(b[k] || '')) delete b[k];
     for (const k of ['ntfyUrl', 'webhookUrl']) if (b[k] && !/^https?:\/\//.test(b[k])) throw new Error(`${k}: muss mit http(s):// beginnen`);
     const before = db.settings().intervalMin;
     const s = db.saveSettings(b);
@@ -95,6 +99,20 @@ async function api(req, res, path) {
     const s = db.settings();
     if (!channels(s).length) return json(res, 400, { error: 'Kein Benachrichtigungskanal eingerichtet' });
     return json(res, 200, { results: await send(s, { title: '🔥 Deal-Radar Test', body: 'Benachrichtigungen funktionieren.', url: s.publicUrl || undefined, priority: 3 }) });
+  }
+  if (path === '/api/ai/suggest' && m === 'POST') {
+    const b = await body(req);
+    const description = String(b.description || '').trim().slice(0, 2000);
+    if (description.length < 3) return json(res, 400, { error: 'Bitte kurz beschreiben, was du suchst.' });
+    try {
+      const raw = await suggestProfile({ description, wishPrice: num(b.wishPrice), current: b.current }, { apiKey: aiKey(db.settings()) });
+      // Vorschlag durch dieselbe Bereinigung wie eine Formular-Eingabe schicken; gespeichert wird hier nichts.
+      const { id, ...profile } = cleanProfile({ ...raw, type: 'ka', maxPrice: raw.maxPrice ?? '' });
+      return json(res, 200, { profile });
+    } catch (e) {
+      if (e instanceof AiError) return json(res, 502, { error: e.message });
+      throw e;
+    }
   }
   if (path === '/api/profiles' && m === 'POST') {
     const p = db.saveProfile(cleanProfile(await body(req)));

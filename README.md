@@ -2,11 +2,12 @@
 
 Schnäppchen-Tracker als Web-App (für den iPhone-Home-Bildschirm gedacht): beobachtet Kleinanzeigen-Suchen und Deal-Feeds, bewertet jedes Angebot mit einem Score, sortiert das Beste nach oben, prüft, ob Angebote noch existieren, und schickt bei Top-Deals eine Nachricht.
 
-Keine npm-Abhängigkeiten – nur Node.js ≥ 22.13 (eingebautes SQLite).
+Benötigt Node.js ≥ 22.13 (eingebautes SQLite). Einzige npm-Abhängigkeit ist das Anthropic-SDK für den optionalen KI-Assistenten; ohne `npm install` läuft alles außer den KI-Vorschlägen.
 
 ## Start
 
 ```bash
+npm install --omit=dev    # nur für den KI-Assistenten nötig
 node server.js            # http://localhost:8787
 npm test
 ```
@@ -26,6 +27,16 @@ Das legt einen Debian-12-Container (512 MB RAM, 4 GB Platte, DHCP) an und richte
 In einem bestehenden Debian/Ubuntu-Container oder einer VM: `bash deploy/install.sh` (auch für Updates – die Datenbank in `/opt/deal-radar/data` bleibt erhalten). Alternativ: `docker compose up -d`.
 
 Auf dem iPhone: Adresse in Safari öffnen → Teilen → „Zum Home-Bildschirm“.
+
+## Suchen anlegen
+
+Unter *Suchen → + Neue Suche* gibt es drei Wege:
+
+- **Einfach**: Suchbegriff, optional Wunschpreis und Ausschlusswörter. Ohne Wunschpreis lernt der Radar den Marktpreis.
+- **Erweitert**: das vollständige Formular (mehrere Suchen, Preisstufen, Pluspunkte, Warnungen). Bestehende Suchen öffnen sich immer hier.
+- **Mit KI ausfüllen**: Aus einer freien Beschreibung erstellt Claude einen Vorschlag, der das erweiterte Formular füllt. Gespeichert wird erst nach Prüfung. Im erweiterten Formular kann die KI einen Stand auch überarbeiten.
+
+Für die KI unter *Einstellungen → KI-Assistent* einen Claude-API-Schlüssel eintragen (oder `ANTHROPIC_API_KEY` setzen). Modell: `claude-opus-5-5`, änderbar über `DEALRADAR_AI_MODEL`. Jeder Vorschlag verbraucht API-Guthaben; die Suchläufe selbst nutzen keine KI. Lehnt das Modell eine Anfrage ab, übernimmt ein serverseitiges Ausweichmodell.
 
 ## Benachrichtigungen
 
@@ -58,5 +69,6 @@ Deal-Feeds (mydealz) werden nach Temperatur bewertet.
 - `server.js` – HTTP-API + statische Dateien + Scheduler
 - `src/runner.js` – Suchlauf; `src/score.js` – Filter & Bewertung; `src/extract.js` – Text-/Merkmal-Erkennung
 - `src/sources/` – Kleinanzeigen-Parser, RSS-Parser; `src/notify.js` – Benachrichtigungen
+- `src/ai.js` – KI-Vorschläge für Suchprofile (Claude API)
 - `src/defaults.js` – Start-Suchprofile (danach in der App änderbar)
 - `public/` – Oberfläche (PWA, ohne Build-Schritt)

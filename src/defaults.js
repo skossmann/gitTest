@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS = {
   telegramChat: '',
   webhookUrl: '',
   publicUrl: '',
+  anthropicKey: '', // Claude-API-Schlüssel für KI-Vorschläge (alternativ Umgebungsvariable ANTHROPIC_API_KEY)
 };
 
 const ACCESSORY = '*hülle|case|*tasche|*folie|displayschutz|*glas|*kabel|*adapter|*halterung|*ständer|leerkarton|ovp leer|nur ovp|verpackung|sticker';

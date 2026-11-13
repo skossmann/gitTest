@@ -23,6 +23,6 @@ echo "Warte auf Netzwerk im Container …"
 for i in $(seq 1 30); do pct exec "$CTID" -- sh -c 'getent hosts deb.debian.org >/dev/null' && break; sleep 2; done
 
 pct exec "$CTID" -- mkdir -p /root/deal-radar-src
-tar -C "$SRC" --exclude=./data --exclude=./.git -cf - . | pct exec "$CTID" -- tar -C /root/deal-radar-src -xf -
+tar -C "$SRC" --exclude=./data --exclude=./.git --exclude=./node_modules -cf - . | pct exec "$CTID" -- tar -C /root/deal-radar-src -xf -
 pct exec "$CTID" -- bash /root/deal-radar-src/deploy/install.sh
 echo "Container $CTID fertig. Adresse siehe oben."

@@ -17,9 +17,11 @@ id dealradar >/dev/null 2>&1 || useradd --system --home "$APP" --shell /usr/sbin
 mkdir -p "$APP"
 if [ "$SRC" != "$APP" ]; then
   # data/ (Datenbank) bleibt bei Updates erhalten
-  tar -C "$SRC" --exclude=./data --exclude=./.git -cf - . | tar -C "$APP" -xf -
+  tar -C "$SRC" --exclude=./data --exclude=./.git --exclude=./node_modules -cf - . | tar -C "$APP" -xf -
 fi
 mkdir -p "$APP/data"
+# Abhängigkeit für den KI-Assistenten (optional – die App läuft auch ohne)
+(cd "$APP" && npm install --omit=dev --no-audit --no-fund) || echo "WARNUNG: npm install fehlgeschlagen – KI-Vorschläge sind nicht verfügbar."
 chown -R dealradar:dealradar "$APP"
 [ -f /etc/default/deal-radar ] || printf 'PORT=%s\n# DEALRADAR_PASSWORD=geheim   # optional: Passwortschutz (Benutzername beliebig)\n' "$PORT" > /etc/default/deal-radar
 
