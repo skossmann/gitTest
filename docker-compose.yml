@@ -1,0 +1,10 @@
+services:
+  deal-radar:
+    build: .
+    restart: unless-stopped
+    ports: ["8787:8787"]
+    volumes: ["dealradar-data:/data"]
+    # environment:
+    #   DEALRADAR_PASSWORD: geheim
+volumes:
+  dealradar-data:

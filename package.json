@@ -1,0 +1,13 @@
+{
+  "name": "deal-radar",
+  "version": "1.0.0",
+  "description": "Schnäppchen-Radar: Kleinanzeigen + Hot-Deals als konfigurierbare Web-App (PWA)",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "demo": "node scripts/demo-seed.js"
+  }
+}

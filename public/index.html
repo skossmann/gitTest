@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Deal-Radar</title>
+  <meta name="theme-color" content="#0b1220" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f3f5f9" media="(prefers-color-scheme: light)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Deal-Radar">
+  <meta name="referrer" content="no-referrer">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main id="app"><p class="empty">Lade …</p></main>
+  <nav id="tabs">
+    <button data-tab="radar"><span>📡</span>Radar</button>
+    <button data-tab="deals"><span>🏷️</span>Deals<i id="deal-count"></i></button>
+    <button data-tab="searches"><span>🔎</span>Suchen</button>
+    <button data-tab="settings"><span>⚙️</span>Einstellungen</button>
+  </nav>
+  <div id="sheet" hidden><div class="sheet-bg" data-act="close-sheet"></div><section class="sheet-body" id="sheet-body"></section></div>
+  <div id="toast" hidden></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
