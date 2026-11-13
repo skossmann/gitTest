@@ -67,7 +67,7 @@ test('Gesuche, Tausch, Laptops und Zubehör fallen raus', () => {
   assert.ok(!kept.some((t) => /^(kaufe|tausche)/i.test(t)));
   assert.ok(!kept.some((t) => /laptop|gaming pc/i.test(t)));
   assert.equal(classify(gpu, { title: 'Suche RTX 5090', price: 2000 }).reject, 'gesuch');
-  assert.equal(classify(gpu, { title: 'RTX 3090 24GB', price: 700 }).reject, 'keine-stufe');
+  assert.equal(classify(gpu, { title: 'RTX 4080 Super 16GB', price: 700 }).reject, 'keine-stufe');
 });
 
 test('Mac-Stufen, NAS-Warnung, HDD €/TB', () => {
